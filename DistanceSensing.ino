@@ -46,8 +46,7 @@ float readDistance() {
   return lapse * 0.01716f; // cm
 }
 
-void loop() { 
-
+int scan(){
   float bestDistance = 0;
   int bestAngle = servoMin;
 
@@ -74,35 +73,17 @@ void loop() {
     }
   }
 
-  // Adjusted thresholds for 0–40° sweep
-  String decision;
-  // 0–40° sweep:
-  // Left: 0–13, Forward: 14–27, Right: 28–40
-  // For a full 180° sweep, thresholds could be:
-  // Left: 0–60, Forward: 61–120, Right: 121–180
-  if (bestAngle <= 13) {
-    decision = "TURN LEFT";
-  } 
-  else if (bestAngle >= 28) {
-    decision = "TURN RIGHT";
-  } 
-  else {
-    decision = "GO FORWARD";
-  }
-
   // Display best result + decision
   lcd.clear();
   lcd.drawString(0,0,"BEST RESULT");
   lcd.drawString(0,15,"Angle: " + String(bestAngle));
   lcd.drawString(0,30,"Dist: " + String(bestDistance) + " cm");
-  lcd.drawString(0,45,"Decision: " + decision);
+
   lcd.display();
+  return bestAngle;
+}
 
-  Serial.println("----- RESULT -----");
-  Serial.print("Best angle = "); Serial.println(bestAngle);
-  Serial.print("Best dist  = "); Serial.println(bestDistance);
-  Serial.print("Decision   = "); Serial.println(decision);
-  Serial.println("-----------------");
-
+void loop() { 
+  scan();
   delay(4000);  // show for 4s before next sweep
 }
