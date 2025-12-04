@@ -52,9 +52,8 @@ int scan(){
 
   // TWO sweeps
   for (int sweep = 0; sweep < 2; sweep++) {
-    for (int degree = 0; degree <= 180; degree++) { // logical 0–180
-      int mappedAngle = map(degree, 0, 180, servoMin, servoMax); // map to SG90 range
-      myservo.write(mappedAngle);
+    for (int degree = servoMin; degree <= servoMax; degree++) { // logical 0–180
+      myservo.write(degree);
 
       float d = readDistance();
 
