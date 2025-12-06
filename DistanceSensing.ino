@@ -17,12 +17,47 @@ Servo myservo;
 int servoMin = 0;    // mechanical min angle
 int servoMax = 40;   // mechanical max angle
 
+int motor1Pin1 = 27; 
+int motor1Pin2 = 26; 
+int enable1Pin = 14;
+
+int motor2Pin1 = 25; 
+int motor2Pin2 = 33; 
+int enable2Pin = 32;
+
+const int freq = 30000;
+const int pwmChannel1 = 0;
+const int resolution = 10;
+int dutyCycle1 = 800;
+
+const int pwmChannel2 = 1;  
+int dutyCycle2 = 800;     
+
+
+
 void setup() { 
   Serial.begin(115200);
 
   pinMode(TRIG, OUTPUT);
   pinMode(ECHO, INPUT);
   digitalWrite(TRIG, LOW);
+
+  // Motor related set up
+  pinMode(motor1Pin1, OUTPUT);
+  pinMode(motor1Pin2, OUTPUT);
+  pinMode(enable1Pin, OUTPUT);
+
+  pinMode(motor2Pin1, OUTPUT);
+  pinMode(motor2Pin2, OUTPUT);
+  pinMode(enable2Pin, OUTPUT);
+
+  ledcSetup(pwmChannel1, freq, resolution); // Configure Channel 1
+  ledcAttachPin(enable1Pin, pwmChannel1);   // Attach Pin 1 to Channel 1
+  ledcWrite(pwmChannel1, dutyCycle1);      // Set speed for Motor 1
+
+  ledcSetup(pwmChannel2, freq, resolution); // Configure Channel 2
+  ledcAttachPin(enable2Pin, pwmChannel2);   // Attach Pin 2 to Channel 2
+  ledcWrite(pwmChannel2, dutyCycle2);
 
   myservo.attach(SERVO1, 500, 2400);
 
@@ -93,6 +128,64 @@ void faceResponse(float distance) {
   lcd.display();
 }
 
+void turn(int bestAngle) {
+  int centerAngle = (servoMin + servoMax) / 2; 
+  int error = bestAngle - centerAngle;
+
+  // Control constants
+  int baseSpeed = 180;  // Base reverse speed (0-255)
+  int Kp = 4;           // Proportional Gain: Higher = sharper turns
+
+  int turnAdjustment = error * Kp;
+  
+  int leftSpeed = baseSpeed + turnAdjustment;
+  int rightSpeed = baseSpeed - turnAdjustment;
+
+  leftSpeed = constrain(leftSpeed, 0, 255);
+  rightSpeed = constrain(rightSpeed, 0, 255);
+
+  digitalWrite(motor1Pin1, LOW);
+  digitalWrite(motor1Pin2, HIGH);
+  digitalWrite(motor2Pin1, LOW);
+  digitalWrite(motor2Pin2, HIGH);
+
+  ledcWrite(pwmChannel1, leftSpeed);
+  ledcWrite(pwmChannel2, rightSpeed);
+
+  delay(800);
+
+  ledcWrite(pwmChannel1, 0);
+  ledcWrite(pwmChannel2, 0);
+  digitalWrite(motor1Pin1, LOW);
+  digitalWrite(motor1Pin2, LOW);
+  digitalWrite(motor2Pin1, LOW);
+  digitalWrite(motor2Pin2, LOW);
+}
+
+void driveForward(int time) {
+  digitalWrite(motor1Pin1, HIGH);
+  digitalWrite(motor1Pin2, LOW);
+  digitalWrite(motor2Pin1, HIGH);
+  digitalWrite(motor2Pin2, LOW);
+  delay(time);
+  digitalWrite(motor1Pin1, LOW);
+  digitalWrite(motor1Pin2, LOW);
+  digitalWrite(motor2Pin1, LOW);
+  digitalWrite(motor2Pin2, LOW);
+}
+
+void driveReverse(int time){
+  digitalWrite(motor1Pin1, LOW);
+  digitalWrite(motor1Pin2, HIGH);
+  digitalWrite(motor2Pin1, LOW);
+  digitalWrite(motor2Pin2, HIGH);
+  delay(time);
+  digitalWrite(motor1Pin1, LOW);
+  digitalWrite(motor1Pin2, LOW);
+  digitalWrite(motor2Pin1, LOW);
+  digitalWrite(motor2Pin2, LOW);
+}
+
 int scan(){
   float bestDistance = 0;
   int bestAngle = servoMin;
@@ -114,7 +207,27 @@ int scan(){
   return bestAngle;
 }
 
+void move() {
+  for(int i = 0; i < 4; i++){
+    float d = readDistance();
+    faceResponse(d);
+    if(d < 8){
+      driveReverse(1000);
+      break;
+    } else if (d < 14) {
+      driveForward(1000);
+      break;
+    } else {
+      driveForward(1000);
+    }
+  }
+}
+
 void loop() { 
-  scan();
-  delay(4000);  // show for 4s before next sweep
+  int bestAngle = scan();
+  turn(bestAngle);
+  delay(1000);
+  move();
+  delay(1000);
+  
 }
