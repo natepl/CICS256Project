@@ -17,8 +17,8 @@ const int STEPS_PER_REV = 2048;
 
 Stepper stepper(STEPS_PER_REV, IN1, IN3, IN2, IN4);
 
-int servoMin = 20;    
-int servoMax = 180;
+int servoMin = 60;    
+int servoMax = 160;
 
 int currentSteps = 0;
 
@@ -88,7 +88,7 @@ int scan() {
 
     // FIXED: Reset before sweep 2 → go back to physical -90°
     if (sweep == 1) {
-      moveToPhysicalAngle(-90);
+      moveToAngle(servoMin);
       delay(300);
     }
 
