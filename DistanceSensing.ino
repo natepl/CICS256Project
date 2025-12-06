@@ -22,19 +22,19 @@ const int STEPS_PER_REV = 2048;
 
 Stepper stepper(STEPS_PER_REV, IN1, IN3, IN2, IN4);
 
+int servoMin = -60;    
+int servoMax = 80;
+int bestAngle = 0;
 
-// Adjust for your SG90 actual range
-int servoMin = 0;    // mechanical min angle
-int servoMax = 120;   // mechanical max angle
 int currentSteps = 0;
 
 int motor1Pin1 = 27; 
 int motor1Pin2 = 26; 
-int enable1Pin = 14;
+int enable1Pin = 4;
 
 int motor2Pin1 = 25; 
 int motor2Pin2 = 33; 
-int enable2Pin = 32;
+int enable2Pin = 2;
 
 const int freq = 30000;
 const int pwmChannel1 = 0;
@@ -42,9 +42,8 @@ const int resolution = 10;
 int dutyCycle1 = 800;
 
 const int pwmChannel2 = 1;  
-int dutyCycle2 = 800;     
+int dutyCycle2 = 800;   
 
-// Stepper functions
 int degreeToSteps(int deg) {
   return (deg * STEPS_PER_REV) / 360;
 }
@@ -56,18 +55,22 @@ void moveToPhysicalAngle(int deg) {
   currentSteps = targetSteps;
 }
 
-void setup() { 
+void setup() {
   Serial.begin(115200);
 
   pinMode(TRIG, OUTPUT);
   pinMode(ECHO, INPUT);
   digitalWrite(TRIG, LOW);
-  
-  // Stepper set up
-  stepper.setSpeed(10);
-  moveToAngle(servoMin);
 
-  // Motor related set up
+  stepper.setSpeed(10);
+
+  lcd.init();
+  lcd.flipScreenVertically();
+  lcd.clear();
+  lcd.setColor(WHITE);
+  lcd.drawString(0,0,"Radar Init...");
+  lcd.display();
+
   pinMode(motor1Pin1, OUTPUT);
   pinMode(motor1Pin2, OUTPUT);
   pinMode(enable1Pin, OUTPUT);
@@ -84,26 +87,10 @@ void setup() {
   ledcAttachPin(enable2Pin, pwmChannel2);   // Attach Pin 2 to Channel 2
   ledcWrite(pwmChannel2, dutyCycle2);
 
-  lcd.init(); 
-  lcd.flipScreenVertically();
+  // --- FIXED: Always start at physical -90° ---
+  moveToAngle(servoMin);
+
   delay(1000);
-} 
-
-float readDistance() {
-  digitalWrite(TRIG, LOW);
-  delayMicroseconds(2);
-  digitalWrite(TRIG, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(TRIG, LOW);
-
-  unsigned long timeout = micros() + 26233L;
-  while ((digitalRead(ECHO) == LOW) && (micros() < timeout));
-  unsigned long start_time = micros();
-  timeout = start_time + 26233L;
-  while ((digitalRead(ECHO) == HIGH) && (micros() < timeout));
-  unsigned long lapse = micros() - start_time;
-
-  return lapse * 0.01716f; // cm
 }
 
 void faceResponse(float distance) {
@@ -205,6 +192,42 @@ void driveReverse(int time){
   digitalWrite(motor2Pin2, LOW);
 }
 
+
+float readDistance() {
+  digitalWrite(TRIG, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIG, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG, LOW);
+
+  unsigned long timeout = micros() + 26233L;
+  while ((digitalRead(ECHO) == LOW) && (micros() < timeout));
+  unsigned long start_time = micros();
+  timeout = start_time + 26233L;
+  while ((digitalRead(ECHO) == HIGH) && (micros() < timeout));
+  unsigned long lapse = micros() - start_time;
+
+  return lapse * 0.01716f;
+}
+
+
+void move() {
+  for(int i = 0; i < 4; i++){
+    float d = readDistance();
+    faceResponse(d);
+    if(d < 8){
+      driveReverse(1000);
+      break;
+    } else if (d < 14) {
+      driveForward(1000);
+      break;
+    } else {
+      driveForward(1000);
+    }
+    delay(15);
+  }
+}
+
 int moveToAngle(int deg) {
   // deg = logical 0–180
   // logical 0 = physical -90
@@ -213,21 +236,20 @@ int moveToAngle(int deg) {
   return physicalAngle;
 }
 
-
-int scan() {
+void scan() {
   float bestDistance = 0;
-  int bestAngle = servoMin;
+  bestAngle = servoMin;
 
   for (int sweep = 0; sweep < 2; sweep++) {
 
     // FIXED: Reset before sweep 2 → go back to physical -90°
     if (sweep == 1) {
-      moveToAngle(servoMin);
+      moveToPhysicalAngle(servoMin);
       delay(300);
     }
 
     for (int degree = servoMin; degree <= servoMax; degree++) {
-      moveToAngle(degree);
+      moveToPhysicalAngle(degree);
 
       float d = readDistance();
 
@@ -251,33 +273,12 @@ int scan() {
   lcd.drawString(0,15,"Angle: " + String(bestAngle));
   lcd.drawString(0,30,"Dist: " + String(bestDistance) + " cm");
   lcd.display();
-
-  return bestAngle;
 }
 
-void move() {
-  for(int i = 0; i < 4; i++){
-    float d = readDistance();
-    faceResponse(d);
-    if(d < 8){
-      driveReverse(1000);
-      break;
-    } else if (d < 14) {
-      driveForward(1000);
-      break;
-    } else {
-      driveForward(1000);
-    }
-    delay(15);
-  }
-}
-
-void loop() { 
-  int bestAngle = scan();
+void loop() {
+  scan();
   turn(bestAngle);
   delay(1000);
   move();
   delay(1000);
-  
 }
-
