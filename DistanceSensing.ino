@@ -1,9 +1,14 @@
-// --- SAME HEADERS AS BEFORE ---
-#include <ESP32Servo.h>
-#define SERVO1 23
+#include <ESP32Servo.h> 
+#include <math.h>
+#define SERVO1 23 
 #define TRIG 5
 #define ECHO 16
-#include <SSD1306Wire.h>
+#define CX 60        
+#define CY 25
+#define MOUTH_RAD 32
+#define MOUTH_Y_BASE 48   
+#define COLOR 1
+#include <SSD1306Wire.h> 
 SSD1306Wire lcd(0x3c, SDA, SCL);
 
 // --- STEPPER MOTOR SETUP ---
@@ -17,10 +22,32 @@ const int STEPS_PER_REV = 2048;
 
 Stepper stepper(STEPS_PER_REV, IN1, IN3, IN2, IN4);
 
-int servoMin = 60;    
-int servoMax = 160;
 
+// Adjust for your SG90 actual range
+int servoMin = 60;    // mechanical min angle
+int servoMax = 160;   // mechanical max angle
 int currentSteps = 0;
+
+int motor1Pin1 = 27; 
+int motor1Pin2 = 26; 
+int enable1Pin = 14;
+
+int motor2Pin1 = 25; 
+int motor2Pin2 = 33; 
+int enable2Pin = 32;
+
+const int freq = 30000;
+const int pwmChannel1 = 0;
+const int resolution = 10;
+int dutyCycle1 = 800;
+
+const int pwmChannel2 = 1;  
+int dutyCycle2 = 800;     
+
+// Stepper functions
+int degreeToSteps(int deg) {
+  return (deg * STEPS_PER_REV) / 360;
+}
 
 int degreeToSteps(int deg) {
   return (deg * STEPS_PER_REV) / 360;
@@ -33,27 +60,38 @@ void moveToPhysicalAngle(int deg) {
   currentSteps = targetSteps;
 }
 
-void setup() {
+void setup() { 
   Serial.begin(115200);
 
   pinMode(TRIG, OUTPUT);
   pinMode(ECHO, INPUT);
   digitalWrite(TRIG, LOW);
-
+  
+  // Stepper set up
   stepper.setSpeed(10);
-
-  lcd.init();
-  lcd.flipScreenVertically();
-  lcd.clear();
-  lcd.setColor(WHITE);
-  lcd.drawString(0,0,"Radar Init...");
-  lcd.display();
-
-  // --- FIXED: Always start at physical -90° ---
   moveToPhysicalAngle(-90);
 
+  // Motor related set up
+  pinMode(motor1Pin1, OUTPUT);
+  pinMode(motor1Pin2, OUTPUT);
+  pinMode(enable1Pin, OUTPUT);
+
+  pinMode(motor2Pin1, OUTPUT);
+  pinMode(motor2Pin2, OUTPUT);
+  pinMode(enable2Pin, OUTPUT);
+
+  ledcSetup(pwmChannel1, freq, resolution); // Configure Channel 1
+  ledcAttachPin(enable1Pin, pwmChannel1);   // Attach Pin 1 to Channel 1
+  ledcWrite(pwmChannel1, dutyCycle1);      // Set speed for Motor 1
+
+  ledcSetup(pwmChannel2, freq, resolution); // Configure Channel 2
+  ledcAttachPin(enable2Pin, pwmChannel2);   // Attach Pin 2 to Channel 2
+  ledcWrite(pwmChannel2, dutyCycle2);
+
+  lcd.init(); 
+  lcd.flipScreenVertically();
   delay(1000);
-}
+} 
 
 float readDistance() {
   digitalWrite(TRIG, LOW);
@@ -69,7 +107,106 @@ float readDistance() {
   while ((digitalRead(ECHO) == HIGH) && (micros() < timeout));
   unsigned long lapse = micros() - start_time;
 
-  return lapse * 0.01716f;
+  return lapse * 0.01716f; // cm
+}
+
+void faceResponse(float distance) {
+  lcd.clear();
+  if(distance > 12){
+    int prev_x = -MOUTH_RAD;
+    int prev_y = 0;
+    for (int x = -MOUTH_RAD; x <= MOUTH_RAD; x += 2) {
+      int y_offset = (int)sqrt(pow(MOUTH_RAD, 2) - pow(x, 2));
+      int current_screen_x = CX + x;
+      int current_screen_y = (CY + 2) + y_offset * 0.7;
+      
+      if (x == -MOUTH_RAD) {
+          prev_x = current_screen_x;
+          prev_y = current_screen_y;
+      }
+      lcd.drawLine(prev_x, prev_y, current_screen_x, current_screen_y);
+      prev_x = current_screen_x;
+      prev_y = current_screen_y;
+    }
+  } else if(distance > 8){
+    lcd.drawLine(CX-30,CY+10,CX+30,CY+10);
+  } else {
+    int prev_x = -MOUTH_RAD;
+    int prev_y = MOUTH_Y_BASE; 
+    for (int x = -MOUTH_RAD; x <= MOUTH_RAD; x += 2) {
+      int arch_height = (int)sqrt(pow(MOUTH_RAD, 2) - pow(x, 2));
+      arch_height = arch_height * 0.6; 
+      int current_screen_x = CX + x;
+      int current_screen_y = MOUTH_Y_BASE - arch_height;
+      if (x == -MOUTH_RAD) {
+          prev_x = current_screen_x;
+          prev_y = current_screen_y;
+      }
+      lcd.drawLine(prev_x, prev_y, current_screen_x, current_screen_y);
+      prev_x = current_screen_x;
+      prev_y = current_screen_y;
+    }
+  
+  }
+  lcd.display();
+}
+
+void turn(int bestAngle) {
+  int centerAngle = (servoMin + servoMax) / 2; 
+  int error = bestAngle - centerAngle;
+
+  // Control constants
+  int baseSpeed = 180;  // Base reverse speed (0-255)
+  int Kp = 4;           // Proportional Gain: Higher = sharper turns
+
+  int turnAdjustment = error * Kp;
+  
+  int leftSpeed = baseSpeed + turnAdjustment;
+  int rightSpeed = baseSpeed - turnAdjustment;
+
+  leftSpeed = constrain(leftSpeed, 0, 255);
+  rightSpeed = constrain(rightSpeed, 0, 255);
+
+  digitalWrite(motor1Pin1, LOW);
+  digitalWrite(motor1Pin2, HIGH);
+  digitalWrite(motor2Pin1, LOW);
+  digitalWrite(motor2Pin2, HIGH);
+
+  ledcWrite(pwmChannel1, leftSpeed);
+  ledcWrite(pwmChannel2, rightSpeed);
+
+  delay(800);
+
+  ledcWrite(pwmChannel1, 0);
+  ledcWrite(pwmChannel2, 0);
+  digitalWrite(motor1Pin1, LOW);
+  digitalWrite(motor1Pin2, LOW);
+  digitalWrite(motor2Pin1, LOW);
+  digitalWrite(motor2Pin2, LOW);
+}
+
+void driveForward(int time) {
+  digitalWrite(motor1Pin1, HIGH);
+  digitalWrite(motor1Pin2, LOW);
+  digitalWrite(motor2Pin1, HIGH);
+  digitalWrite(motor2Pin2, LOW);
+  delay(time);
+  digitalWrite(motor1Pin1, LOW);
+  digitalWrite(motor1Pin2, LOW);
+  digitalWrite(motor2Pin1, LOW);
+  digitalWrite(motor2Pin2, LOW);
+}
+
+void driveReverse(int time){
+  digitalWrite(motor1Pin1, LOW);
+  digitalWrite(motor1Pin2, HIGH);
+  digitalWrite(motor2Pin1, LOW);
+  digitalWrite(motor2Pin2, HIGH);
+  delay(time);
+  digitalWrite(motor1Pin1, LOW);
+  digitalWrite(motor1Pin2, LOW);
+  digitalWrite(motor2Pin1, LOW);
+  digitalWrite(motor2Pin2, LOW);
 }
 
 int moveToAngle(int deg) {
@@ -80,13 +217,12 @@ int moveToAngle(int deg) {
   return physicalAngle;
 }
 
-int scan() {
+
+int scan(){
   float bestDistance = 0;
   int bestAngle = servoMin;
 
   for (int sweep = 0; sweep < 2; sweep++) {
-
-    // FIXED: Reset before sweep 2 → go back to physical -90°
     if (sweep == 1) {
       moveToAngle(servoMin);
       delay(300);
@@ -102,26 +238,37 @@ int scan() {
         bestAngle = degree;
       }
 
-      lcd.clear();
-      lcd.drawString(0,0,"Sweep: " + String(sweep+1));
-      lcd.drawString(0,15,"Angle: " + String(degree));
-      lcd.drawString(0,30,"Dist: " + String(d) + " cm");
-      lcd.display();
+      faceResponse(d);
 
       delay(15);
     }
   }
-
-  lcd.clear();
-  lcd.drawString(0,0,"BEST RESULT");
-  lcd.drawString(0,15,"Angle: " + String(bestAngle));
-  lcd.drawString(0,30,"Dist: " + String(bestDistance) + " cm");
-  lcd.display();
-
   return bestAngle;
 }
 
-void loop() {
-  scan();
-  delay(4000);
+void move() {
+  for(int i = 0; i < 4; i++){
+    float d = readDistance();
+    faceResponse(d);
+    if(d < 8){
+      driveReverse(1000);
+      break;
+    } else if (d < 14) {
+      driveForward(1000);
+      break;
+    } else {
+      driveForward(1000);
+    }
+    delay(15);
+  }
 }
+
+void loop() { 
+  int bestAngle = scan();
+  turn(bestAngle);
+  delay(1000);
+  move();
+  delay(1000);
+  
+}
+
