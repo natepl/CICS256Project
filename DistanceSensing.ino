@@ -24,8 +24,8 @@ Stepper stepper(STEPS_PER_REV, IN1, IN3, IN2, IN4);
 
 
 // Adjust for your SG90 actual range
-int servoMin = 60;    // mechanical min angle
-int servoMax = 160;   // mechanical max angle
+int servoMin = 0;    // mechanical min angle
+int servoMax = 120;   // mechanical max angle
 int currentSteps = 0;
 
 int motor1Pin1 = 27; 
@@ -69,7 +69,7 @@ void setup() {
   
   // Stepper set up
   stepper.setSpeed(10);
-  moveToPhysicalAngle(-90);
+  moveToAngle(servoMin);
 
   // Motor related set up
   pinMode(motor1Pin1, OUTPUT);
@@ -218,11 +218,13 @@ int moveToAngle(int deg) {
 }
 
 
-int scan(){
+int scan() {
   float bestDistance = 0;
   int bestAngle = servoMin;
 
   for (int sweep = 0; sweep < 2; sweep++) {
+
+    // FIXED: Reset before sweep 2 → go back to physical -90°
     if (sweep == 1) {
       moveToAngle(servoMin);
       delay(300);
@@ -238,11 +240,22 @@ int scan(){
         bestAngle = degree;
       }
 
-      faceResponse(d);
+      lcd.clear();
+      lcd.drawString(0,0,"Sweep: " + String(sweep+1));
+      lcd.drawString(0,15,"Angle: " + String(degree));
+      lcd.drawString(0,30,"Dist: " + String(d) + " cm");
+      lcd.display();
 
       delay(15);
     }
   }
+
+  lcd.clear();
+  lcd.drawString(0,0,"BEST RESULT");
+  lcd.drawString(0,15,"Angle: " + String(bestAngle));
+  lcd.drawString(0,30,"Dist: " + String(bestDistance) + " cm");
+  lcd.display();
+
   return bestAngle;
 }
 
