@@ -49,10 +49,6 @@ int degreeToSteps(int deg) {
   return (deg * STEPS_PER_REV) / 360;
 }
 
-int degreeToSteps(int deg) {
-  return (deg * STEPS_PER_REV) / 360;
-}
-
 void moveToPhysicalAngle(int deg) {
   int targetSteps = degreeToSteps(deg);
   int delta = targetSteps - currentSteps;
